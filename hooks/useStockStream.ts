@@ -61,6 +61,28 @@ export function useStockStream(symbols: string[]): UseStockStreamReturn {
       return next;
     });
 
+    // Fetch cached snapshots from SQLite (non-blocking, runs in parallel with stream)
+    fetch(`/api/stocks/snapshot?symbols=${encodeURIComponent(symbolsKey)}`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: StockData[]) => {
+        if (data.length > 0) {
+          setStocks((prev) => {
+            const next = new Map(prev);
+            for (const stock of data) {
+              const existing = next.get(stock.symbol);
+              // Only use cached data if we don't have live data yet
+              if (!existing || existing.lastPrice === null) {
+                next.set(stock.symbol, stock);
+              }
+            }
+            return next;
+          });
+        }
+      })
+      .catch(() => {
+        // Non-fatal: the SSE stream will provide data eventually
+      });
+
     const url = `/api/stocks/stream?symbols=${encodeURIComponent(symbolsKey)}`;
     const es = new EventSource(url);
     eventSourceRef.current = es;

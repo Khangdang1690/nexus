@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import WebSocket from "ws";
 import type { AlpacaTrade, AlpacaQuote, SSEEvent } from "@/app/types/stock";
+import { upsertTrade, upsertQuote } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -123,6 +124,11 @@ export async function GET(request: NextRequest): Promise<Response> {
                   timestamp: trade.t,
                   conditions: trade.c || [],
                 });
+                try {
+                  upsertTrade(trade.S, trade.p, trade.s, trade.t);
+                } catch (err) {
+                  console.error("[DB] Failed to cache trade:", err);
+                }
                 break;
               }
 
@@ -137,6 +143,11 @@ export async function GET(request: NextRequest): Promise<Response> {
                   askSize: quote.as,
                   timestamp: quote.t,
                 });
+                try {
+                  upsertQuote(quote.S, quote.bp, quote.bs, quote.ap, quote.as, quote.t);
+                } catch (err) {
+                  console.error("[DB] Failed to cache quote:", err);
+                }
                 break;
               }
 

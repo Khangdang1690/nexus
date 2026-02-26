@@ -6,6 +6,7 @@ import { StockCard } from "@/components/StockCard";
 import { ConnectionStatusBadge } from "@/components/ConnectionStatusBadge";
 import { SymbolInput } from "@/components/SymbolInput";
 import { Card, CardContent } from "@/components/ui/card";
+import { AlgorithmPanel } from "@/components/AlgorithmPanel";
 
 const DEFAULT_SYMBOLS = ["AAPL", "GOOGL", "MSFT", "TSLA", "AMZN"];
 
@@ -77,6 +78,10 @@ export function StockDashboard() {
           })}
         </div>
       )}
+
+      <hr className="my-10 border-border" />
+
+      <AlgorithmPanel />
     </div>
   );
 }
