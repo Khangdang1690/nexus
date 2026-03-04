@@ -5,6 +5,7 @@ import type {
   DailyBar,
   AlgorithmState,
   RebalanceResult,
+  NNModelState,
 } from "@/app/types/algorithm";
 
 export interface StockCacheRow {
@@ -73,7 +74,7 @@ function getDb(): Database.Database {
       next_rebalance   TEXT,
       current_targets  TEXT,
       latest_scores    TEXT,
-      spy_regime       TEXT,
+      last_nn_training TEXT,
       updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -81,7 +82,6 @@ function getDb(): Database.Database {
       id              INTEGER PRIMARY KEY AUTOINCREMENT,
       timestamp       TEXT NOT NULL,
       trigger_type    TEXT NOT NULL,
-      spy_regime      TEXT,
       scores          TEXT,
       targets         TEXT,
       orders          TEXT,
@@ -89,6 +89,16 @@ function getDb(): Database.Database {
       success         INTEGER NOT NULL DEFAULT 0,
       error           TEXT,
       created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS nn_model (
+      id                TEXT PRIMARY KEY DEFAULT 'current',
+      model_json        TEXT NOT NULL,
+      scaler_means      TEXT NOT NULL,
+      scaler_stds       TEXT NOT NULL,
+      trained_at        TEXT NOT NULL,
+      training_samples  INTEGER NOT NULL,
+      updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
 
@@ -224,18 +234,18 @@ export function saveAlgorithmState(state: {
   nextRebalance?: string | null;
   currentTargets?: unknown[];
   latestScores?: unknown[];
-  spyRegime?: unknown;
+  lastNNTraining?: string | null;
 }): void {
   const db = getDb();
   db.prepare(
-    `INSERT INTO algorithm_state (id, last_rebalance, next_rebalance, current_targets, latest_scores, spy_regime, updated_at)
-     VALUES ('current', @lastRebalance, @nextRebalance, @currentTargets, @latestScores, @spyRegime, datetime('now'))
+    `INSERT INTO algorithm_state (id, last_rebalance, next_rebalance, current_targets, latest_scores, last_nn_training, updated_at)
+     VALUES ('current', @lastRebalance, @nextRebalance, @currentTargets, @latestScores, @lastNNTraining, datetime('now'))
      ON CONFLICT(id) DO UPDATE SET
        last_rebalance = COALESCE(@lastRebalance, algorithm_state.last_rebalance),
        next_rebalance = COALESCE(@nextRebalance, algorithm_state.next_rebalance),
        current_targets = COALESCE(@currentTargets, algorithm_state.current_targets),
        latest_scores = COALESCE(@latestScores, algorithm_state.latest_scores),
-       spy_regime = COALESCE(@spyRegime, algorithm_state.spy_regime),
+       last_nn_training = COALESCE(@lastNNTraining, algorithm_state.last_nn_training),
        updated_at = datetime('now')`
   ).run({
     lastRebalance: state.lastRebalance ?? null,
@@ -246,7 +256,7 @@ export function saveAlgorithmState(state: {
     latestScores: state.latestScores
       ? JSON.stringify(state.latestScores)
       : null,
-    spyRegime: state.spyRegime ? JSON.stringify(state.spyRegime) : null,
+    lastNNTraining: state.lastNNTraining ?? null,
   });
 }
 
@@ -259,7 +269,7 @@ export function loadAlgorithmState(): AlgorithmState | null {
     next_rebalance: string | null;
     current_targets: string | null;
     latest_scores: string | null;
-    spy_regime: string | null;
+    last_nn_training: string | null;
   } | undefined;
 
   if (!row) return null;
@@ -271,7 +281,7 @@ export function loadAlgorithmState(): AlgorithmState | null {
       ? JSON.parse(row.current_targets)
       : [],
     latestScores: row.latest_scores ? JSON.parse(row.latest_scores) : [],
-    spyRegime: row.spy_regime ? JSON.parse(row.spy_regime) : null,
+    lastNNTraining: row.last_nn_training,
     isRunning: false,
     schedulerActive: false,
   };
@@ -282,12 +292,11 @@ export function loadAlgorithmState(): AlgorithmState | null {
 export function insertRebalanceLog(result: RebalanceResult): void {
   const db = getDb();
   db.prepare(
-    `INSERT INTO rebalance_log (timestamp, trigger_type, spy_regime, scores, targets, orders, account_equity, success, error)
-     VALUES (@timestamp, @triggerType, @spyRegime, @scores, @targets, @orders, @accountEquity, @success, @error)`
+    `INSERT INTO rebalance_log (timestamp, trigger_type, scores, targets, orders, account_equity, success, error)
+     VALUES (@timestamp, @triggerType, @scores, @targets, @orders, @accountEquity, @success, @error)`
   ).run({
     timestamp: result.timestamp,
     triggerType: result.triggerType,
-    spyRegime: JSON.stringify(result.spyRegime),
     scores: JSON.stringify(result.scores),
     targets: JSON.stringify(result.targets),
     orders: JSON.stringify(result.ordersPlaced),
@@ -306,7 +315,6 @@ export function getRebalanceLogs(limit: number): RebalanceResult[] {
     .all(limit) as {
     timestamp: string;
     trigger_type: string;
-    spy_regime: string;
     scores: string;
     targets: string;
     orders: string;
@@ -318,7 +326,6 @@ export function getRebalanceLogs(limit: number): RebalanceResult[] {
   return rows.map((r) => ({
     timestamp: r.timestamp,
     triggerType: r.trigger_type as "scheduled" | "manual",
-    spyRegime: JSON.parse(r.spy_regime),
     scores: JSON.parse(r.scores),
     targets: JSON.parse(r.targets),
     ordersPlaced: JSON.parse(r.orders),
@@ -326,4 +333,50 @@ export function getRebalanceLogs(limit: number): RebalanceResult[] {
     success: r.success === 1,
     error: r.error ?? undefined,
   }));
+}
+
+// ─── NN Model ────────────────────────────────────────────────
+
+export function saveNNModel(state: NNModelState): void {
+  const db = getDb();
+  db.prepare(
+    `INSERT INTO nn_model (id, model_json, scaler_means, scaler_stds, trained_at, training_samples, updated_at)
+     VALUES ('current', @modelJson, @scalerMeans, @scalerStds, @trainedAt, @trainingSamples, datetime('now'))
+     ON CONFLICT(id) DO UPDATE SET
+       model_json = @modelJson,
+       scaler_means = @scalerMeans,
+       scaler_stds = @scalerStds,
+       trained_at = @trainedAt,
+       training_samples = @trainingSamples,
+       updated_at = datetime('now')`
+  ).run({
+    modelJson: state.modelJson,
+    scalerMeans: JSON.stringify(state.scalerMeans),
+    scalerStds: JSON.stringify(state.scalerStds),
+    trainedAt: state.trainedAt,
+    trainingSamples: state.trainingSamples,
+  });
+}
+
+export function loadNNModel(): NNModelState | null {
+  const db = getDb();
+  const row = db
+    .prepare(`SELECT * FROM nn_model WHERE id = 'current'`)
+    .get() as {
+    model_json: string;
+    scaler_means: string;
+    scaler_stds: string;
+    trained_at: string;
+    training_samples: number;
+  } | undefined;
+
+  if (!row) return null;
+
+  return {
+    modelJson: row.model_json,
+    scalerMeans: JSON.parse(row.scaler_means),
+    scalerStds: JSON.parse(row.scaler_stds),
+    trainedAt: row.trained_at,
+    trainingSamples: row.training_samples,
+  };
 }

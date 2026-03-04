@@ -44,9 +44,15 @@ export function AlgorithmPanel() {
           Trading Algorithm
         </h2>
         <p className="text-xs text-muted-foreground">
-          Momentum-based strategy with volatility targeting. Auto-rebalances
-          Monday 10:00 AM ET.
+          TSMOM + Neural Network momentum strategy. Weekly rebalance Monday
+          10:00 AM ET.
         </p>
+        {state?.lastNNTraining && (
+          <p className="text-xs text-muted-foreground">
+            NN last trained:{" "}
+            {new Date(state.lastNNTraining).toLocaleDateString()}
+          </p>
+        )}
       </div>
 
       {error && (
@@ -75,7 +81,6 @@ export function AlgorithmPanel() {
 
       <ScoresTable
         scores={state?.latestScores ?? []}
-        spyRegime={state?.spyRegime ?? null}
         selectedSymbols={selectedSymbols}
       />
 

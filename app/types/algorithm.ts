@@ -9,32 +9,23 @@ export interface DailyBar {
   volume: number;
 }
 
-// --- Indicators ---
-export interface SymbolIndicators {
-  symbol: string;
-  rocFast: number | null;
-  rocMed: number | null;
-  rocSlow: number | null;
-  stdDev: number | null;
-  rsi: number | null;
-  sma50: number | null;
-  lastClose: number | null;
+// --- Monthly Data ---
+export interface MonthlyClose {
+  yearMonth: string; // "YYYY-MM"
+  close: number;
 }
 
-export interface SpyRegime {
-  sma200: number | null;
-  lastClose: number | null;
-  isBullish: boolean;
+export interface MonthlyReturn {
+  yearMonth: string;
+  monthlyReturn: number;
 }
 
 // --- Scoring ---
 export interface ScoredAsset {
   symbol: string;
-  weightedMom: number;
-  riskAdjMom: number;
-  trendFactor: number;
-  finalScore: number;
-  annualizedVol: number;
+  vanillaMomentum: number; // 12-month cumulative return
+  nnScore: number; // NN predicted probability (0-1)
+  combinedScore: number; // 0.5 * vanilla + 0.5 * nn
 }
 
 // --- Position Sizing ---
@@ -43,7 +34,6 @@ export interface TargetPosition {
   weight: number;
   dollarAmount: number;
   shares: number;
-  isLeveraged3x: boolean;
 }
 
 // --- Orders ---
@@ -59,7 +49,6 @@ export interface OrderRecord {
 export interface RebalanceResult {
   timestamp: string;
   triggerType: "scheduled" | "manual";
-  spyRegime: SpyRegime;
   scores: ScoredAsset[];
   targets: TargetPosition[];
   ordersPlaced: OrderRecord[];
@@ -74,9 +63,18 @@ export interface AlgorithmState {
   nextScheduledRebalance: string | null;
   currentTargets: TargetPosition[];
   latestScores: ScoredAsset[];
-  spyRegime: SpyRegime | null;
+  lastNNTraining: string | null;
   isRunning: boolean;
   schedulerActive: boolean;
+}
+
+// --- NN Model State ---
+export interface NNModelState {
+  modelJson: string;
+  scalerMeans: number[];
+  scalerStds: number[];
+  trainedAt: string;
+  trainingSamples: number;
 }
 
 // --- Alpaca Account ---
@@ -109,38 +107,19 @@ export interface AlpacaClock {
 
 // --- Constants ---
 export const UNIVERSE = [
-  "SOXL", "TECL", "TQQQ", "FAS", "ERX",
-  "UUP", "TMF", "BIL", "TSLA", "XOM",
-  "CVX", "ROBO", "ARKX", "MSFT", "GOOGL",
-  "META", "BOIL", "LABU", "ARKG",
+  "AAPL", "MSFT", "GOOGL", "NVDA", "META", "AMZN", "TSLA",
+  "AMD", "INTC", "QCOM", "AVGO", "TXN", "MU", "AMAT", "ORCL",
+  "JPM", "BAC", "GS", "MS", "BLK", "C", "WFC", "AXP", "V", "MA",
+  "JNJ", "UNH", "PFE", "ABBV", "MRK", "LLY", "TMO", "ABT",
+  "PG", "KO", "PEP", "WMT", "COST", "MCD", "NKE", "SBUX",
+  "XOM", "CVX", "COP", "CAT", "BA", "HON", "GE", "MMM",
+  "HD", "DIS", "NFLX", "CRM", "ADBE", "PYPL",
 ] as const;
 
-export const SPY = "SPY";
-export const SAFE_ASSET = "BIL";
-export const DEFENSIVE_ASSET = "UUP";
-export const LEVERAGED_3X = ["SOXL", "TECL", "TQQQ", "FAS", "ERX", "LABU"];
-export const MAX_POSITIONS = 3;
-export const TARGET_VOL = 0.60;
-export const LEVERAGED_3X_CAP = 0.50;
-export const REBALANCE_THRESHOLD = 0.10;
-
-// Indicator periods
-export const ROC_FAST_PERIOD = 9;
-export const ROC_MED_PERIOD = 21;
-export const ROC_SLOW_PERIOD = 63;
-export const STD_PERIOD = 21;
-export const RSI_PERIOD = 14;
-export const SMA_PERIOD = 50;
-export const SPY_SMA_PERIOD = 200;
-export const WARMUP_BARS = 300;
-
-// Scoring weights
-export const ROC_FAST_WEIGHT = 0.40;
-export const ROC_MED_WEIGHT = 0.35;
-export const ROC_SLOW_WEIGHT = 0.25;
-export const ABOVE_SMA_FACTOR = 1.0;
-export const BELOW_SMA_FACTOR = 0.6;
+// TSMOM + NN parameters
+export const FEATURE_MONTHS = 12;
+export const TRAIN_WINDOW = 36;
+export const TOP_PCT = 0.20;
+export const NN_HIDDEN = 20;
+export const WARMUP_BARS = 1200;
 export const TRADING_DAYS_PER_YEAR = 252;
-
-// Volatility lookback for position sizing
-export const VOL_LOOKBACK = 20;

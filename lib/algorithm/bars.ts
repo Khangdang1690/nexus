@@ -1,4 +1,4 @@
-import type { DailyBar } from "@/app/types/algorithm";
+import type { DailyBar, MonthlyClose, MonthlyReturn } from "@/app/types/algorithm";
 import { WARMUP_BARS } from "@/app/types/algorithm";
 import { fetchDailyBars } from "@/lib/alpaca/data";
 import {
@@ -8,11 +8,12 @@ import {
 } from "@/lib/db";
 
 /**
- * Compute a start date string ~18 months ago (enough for 300 trading days).
+ * Compute a start date string ~53 months ago
+ * (36 training + 12 features + 5 buffer months of data).
  */
 function getWarmupStartDate(): string {
   const d = new Date();
-  d.setMonth(d.getMonth() - 18);
+  d.setMonth(d.getMonth() - 53);
   return d.toISOString().substring(0, 10);
 }
 
@@ -125,4 +126,41 @@ export function getBarHistory(
 ): DailyBar[] {
   // getDailyBars returns DESC, we reverse to ASC
   return getDailyBars(symbol, count).reverse();
+}
+
+/**
+ * Aggregate daily bars into monthly closing prices.
+ * For each calendar month, uses the last trading day's close.
+ * Returns sorted ascending by yearMonth.
+ */
+export function aggregateToMonthlyCloses(
+  dailyBars: DailyBar[]
+): MonthlyClose[] {
+  const monthMap = new Map<string, number>();
+  for (const bar of dailyBars) {
+    const ym = bar.date.substring(0, 7); // "YYYY-MM"
+    // Since bars are sorted asc, later dates overwrite earlier
+    monthMap.set(ym, bar.close);
+  }
+  return [...monthMap.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([yearMonth, close]) => ({ yearMonth, close }));
+}
+
+/**
+ * Compute month-over-month returns from monthly closing prices.
+ */
+export function computeMonthlyReturns(
+  monthlyCloses: MonthlyClose[]
+): MonthlyReturn[] {
+  const returns: MonthlyReturn[] = [];
+  for (let i = 1; i < monthlyCloses.length; i++) {
+    const prev = monthlyCloses[i - 1].close;
+    if (prev <= 0) continue;
+    returns.push({
+      yearMonth: monthlyCloses[i].yearMonth,
+      monthlyReturn: (monthlyCloses[i].close - prev) / prev,
+    });
+  }
+  return returns;
 }

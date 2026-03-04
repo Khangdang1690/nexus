@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useStockStream } from "@/hooks/useStockStream";
-import { StockCard } from "@/components/StockCard";
+import { StockChartWrapper } from "@/components/StockChartWrapper";
 import { ConnectionStatusBadge } from "@/components/ConnectionStatusBadge";
 import { SymbolInput } from "@/components/SymbolInput";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,7 +24,7 @@ export function StockDashboard() {
   const { stocks, status, statusMessage, error } = useStockStream(symbols);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
+    <div className="mx-auto max-w-7xl px-4 py-8">
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Stock Monitor</h1>
@@ -51,7 +51,7 @@ export function StockDashboard() {
 
       <p className="mb-6 text-xs text-muted-foreground">
         Market data streams during US market hours: 9:30 AM - 4:00 PM ET,
-        Monday-Friday. Outside these hours, cards will show &ldquo;Waiting for
+        Monday-Friday. Outside these hours, charts will show &ldquo;Waiting for
         market data.&rdquo;
       </p>
 
@@ -60,7 +60,7 @@ export function StockDashboard() {
           Add a stock symbol above to start monitoring.
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {symbols.map((symbol) => {
             const stockData = stocks.get(symbol) || {
               symbol,
@@ -74,7 +74,13 @@ export function StockDashboard() {
               askSize: null,
               lastQuoteTime: null,
             };
-            return <StockCard key={symbol} data={stockData} />;
+            return (
+              <StockChartWrapper
+                key={symbol}
+                symbol={symbol}
+                stockData={stockData}
+              />
+            );
           })}
         </div>
       )}

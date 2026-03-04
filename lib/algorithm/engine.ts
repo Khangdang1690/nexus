@@ -1,9 +1,10 @@
 import cron, { type ScheduledTask } from "node-cron";
 import type { AlgorithmState, RebalanceResult } from "@/app/types/algorithm";
-import { UNIVERSE, SPY } from "@/app/types/algorithm";
-import { loadAlgorithmState, saveAlgorithmState } from "@/lib/db";
+import { UNIVERSE } from "@/app/types/algorithm";
+import { loadAlgorithmState } from "@/lib/db";
 import { ensureBarsLoaded } from "@/lib/algorithm/bars";
 import { executeRebalance } from "@/lib/algorithm/rebalance";
+import { loadPersistedModel, getNNTrainedAt } from "@/lib/algorithm/nn";
 import { getClock } from "@/lib/alpaca/trading";
 
 // Singleton state — survives Next.js hot reloads
@@ -19,7 +20,7 @@ function getDefaultState(): AlgorithmState {
     nextScheduledRebalance: null,
     currentTargets: [],
     latestScores: [],
-    spyRegime: null,
+    lastNNTraining: null,
     isRunning: false,
     schedulerActive: false,
   };
@@ -36,8 +37,12 @@ export async function initializeAlgorithm(): Promise<void> {
   globalForAlgo.__algorithmState.schedulerActive = true;
   globalForAlgo.__isRunning = false;
 
+  // Try to load persisted NN model
+  loadPersistedModel();
+  globalForAlgo.__algorithmState.lastNNTraining = getNNTrainedAt();
+
   // Warm up bar data in the background (don't block server startup)
-  const allSymbols = [...UNIVERSE, SPY];
+  const allSymbols = [...UNIVERSE];
   ensureBarsLoaded(allSymbols).catch((err) => {
     console.error("[Algorithm] Bar warmup failed:", err);
   });
@@ -77,7 +82,7 @@ export async function initializeAlgorithm(): Promise<void> {
             globalForAlgo.__algorithmState.lastRebalance = result.timestamp;
             globalForAlgo.__algorithmState.currentTargets = result.targets;
             globalForAlgo.__algorithmState.latestScores = result.scores;
-            globalForAlgo.__algorithmState.spyRegime = result.spyRegime;
+            globalForAlgo.__algorithmState.lastNNTraining = getNNTrainedAt();
             globalForAlgo.__algorithmState.isRunning = false;
           }
         } catch (err) {
@@ -114,14 +119,13 @@ export function getAlgorithmState(): AlgorithmState {
 }
 
 /**
- * Trigger a manual rebalance. Bypasses threshold check.
+ * Trigger a manual rebalance.
  */
 export async function triggerManualRebalance(): Promise<RebalanceResult> {
   if (globalForAlgo.__isRunning) {
     return {
       timestamp: new Date().toISOString(),
       triggerType: "manual",
-      spyRegime: { sma200: null, lastClose: null, isBullish: false },
       scores: [],
       targets: [],
       ordersPlaced: [],
@@ -143,7 +147,7 @@ export async function triggerManualRebalance(): Promise<RebalanceResult> {
       globalForAlgo.__algorithmState.lastRebalance = result.timestamp;
       globalForAlgo.__algorithmState.currentTargets = result.targets;
       globalForAlgo.__algorithmState.latestScores = result.scores;
-      globalForAlgo.__algorithmState.spyRegime = result.spyRegime;
+      globalForAlgo.__algorithmState.lastNNTraining = getNNTrainedAt();
       globalForAlgo.__algorithmState.isRunning = false;
     }
 

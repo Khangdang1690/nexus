@@ -69,12 +69,6 @@ export function RebalanceHistory({ history }: RebalanceHistoryProps) {
                         })}
                       </p>
                       <p>
-                        SPY:{" "}
-                        {entry.spyRegime.isBullish
-                          ? "Bullish"
-                          : "Bearish"}
-                      </p>
-                      <p>
                         Targets:{" "}
                         {entry.targets
                           .map(
